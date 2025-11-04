@@ -1,0 +1,95 @@
+// Prisma Schema for DOOH Charging Station
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Admin users
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         String   @default("admin")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("users")
+}
+
+// Advertisements
+model Ad {
+  id         String   @id @default(uuid())
+  name       String
+  type       String
+  url        String
+  duration   Int
+  clientName String?  @map("client_name")
+  fileSize   Int?     @map("file_size")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  deviceAds DeviceAd[]
+  stats     Stat[]
+
+  @@map("ads")
+}
+
+// Charging station devices
+model Device {
+  id              String   @id @default(uuid())
+  deviceId        String   @unique @map("device_id")
+  name            String
+  locationName    String   @map("location_name")
+  locationAddress String?  @map("location_address")
+  gpsLatitude     Float?   @map("gps_latitude")
+  gpsLongitude    Float?   @map("gps_longitude")
+  status          String   @default("offline")
+  lastSeen        DateTime @default(now()) @map("last_seen")
+  batteryLevel    Int?     @map("battery_level")
+  androidVersion  String?  @map("android_version")
+  registeredAt    DateTime @default(now()) @map("registered_at")
+
+  deviceAds DeviceAd[]
+  stats     Stat[]
+
+  @@index([status])
+  @@map("devices")
+}
+
+// Ad assignments to devices
+model DeviceAd {
+  id        String    @id @default(uuid())
+  deviceId  String    @map("device_id")
+  adId      String    @map("ad_id")
+  screen    Int
+  priority  String    @default("normal")
+  startDate DateTime? @map("start_date")
+  endDate   DateTime? @map("end_date")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  ad     Ad     @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@map("device_ads")
+}
+
+// Statistics
+model Stat {
+  id           String   @id @default(uuid())
+  deviceId     String   @map("device_id")
+  adId         String   @map("ad_id")
+  eventType    String   @map("event_type")
+  screen       Int
+  timestamp    DateTime @default(now())
+  duration     Int?
+  rotationSlot Int?     @map("rotation_slot")
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  ad     Ad     @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@index([timestamp])
+  @@map("stats")
+}
