@@ -8,9 +8,20 @@ const reportController = {
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
       const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
 
-      // Total views
-      const [viewsToday, viewsWeek, viewsMonth] = await Promise.all([
+      // Run ALL queries in parallel
+      const [
+        viewsToday,
+        viewsWeek,
+        viewsMonth,
+        activeDevices,
+        totalDevices,
+        topLocations,
+        topAds,
+        chargingEvents,
+        qrScans,
+      ] = await Promise.all([
         prisma.stat.count({
           where: { eventType: "view", timestamp: { gte: today } },
         }),
@@ -20,24 +31,29 @@ const reportController = {
         prisma.stat.count({
           where: { eventType: "view", timestamp: { gte: monthAgo } },
         }),
+        prisma.device.count({ where: { lastSeen: { gte: tenMinutesAgo } } }),
+        prisma.device.count(),
+        prisma.stat.groupBy({
+          by: ["deviceId"],
+          where: { eventType: "view", timestamp: { gte: monthAgo } },
+          _count: { id: true },
+          orderBy: { _count: { id: "desc" } },
+          take: 5,
+        }),
+        prisma.stat.groupBy({
+          by: ["adId"],
+          where: { eventType: "view", timestamp: { gte: monthAgo } },
+          _count: { id: true },
+          orderBy: { _count: { id: "desc" } },
+          take: 5,
+        }),
+        prisma.stat.count({
+          where: { eventType: "charging_start", timestamp: { gte: monthAgo } },
+        }),
+        prisma.stat.count({
+          where: { eventType: "qr_scan", timestamp: { gte: monthAgo } },
+        }),
       ]);
-
-      // Active devices
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-      const activeDevices = await prisma.device.count({
-        where: { lastSeen: { gte: tenMinutesAgo } },
-      });
-
-      const totalDevices = await prisma.device.count();
-
-      // Top locations
-      const topLocations = await prisma.stat.groupBy({
-        by: ["deviceId"],
-        where: { eventType: "view", timestamp: { gte: monthAgo } },
-        _count: { id: true },
-        orderBy: { _count: { id: "desc" } },
-        take: 5,
-      });
 
       const topLocationsWithDetails = await Promise.all(
         topLocations.map(async (loc) => {
@@ -52,15 +68,6 @@ const reportController = {
         })
       );
 
-      // Top ads
-      const topAds = await prisma.stat.groupBy({
-        by: ["adId"],
-        where: { eventType: "view", timestamp: { gte: monthAgo } },
-        _count: { id: true },
-        orderBy: { _count: { id: "desc" } },
-        take: 5,
-      });
-
       const topAdsWithDetails = await Promise.all(
         topAds.map(async (ad) => {
           const adDetails = await prisma.ad.findUnique({
@@ -74,28 +81,11 @@ const reportController = {
         })
       );
 
-      // Charging events
-      const chargingEvents = await prisma.stat.count({
-        where: { eventType: "charging_start", timestamp: { gte: monthAgo } },
-      });
-
-      // QR scans
-      const qrScans = await prisma.stat.count({
-        where: { eventType: "qr_scan", timestamp: { gte: monthAgo } },
-      });
-
       return reply.send({
         success: true,
         stats: {
-          views: {
-            today: viewsToday,
-            week: viewsWeek,
-            month: viewsMonth,
-          },
-          devices: {
-            active: activeDevices,
-            total: totalDevices,
-          },
+          views: { today: viewsToday, week: viewsWeek, month: viewsMonth },
+          devices: { active: activeDevices, total: totalDevices },
           topLocations: topLocationsWithDetails,
           topAds: topAdsWithDetails,
           chargingEvents,
